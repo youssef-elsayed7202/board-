@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <title>السبورة</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <!-- =========================
+       HOME
+  ========================== -->
+  <section id="homeScreen" class="screen">
+    <header class="homeHeader">
+      <div>
+        <h1>السبورة</h1>
+        <p>مساحتك للشرح والكتابة والمذاكرة</p>
+      </div>
+
+      <button id="themeHomeBtn" class="iconBtn" title="الوضع الليلي">☾</button>
+    </header>
+
+    <div class="homeActions">
+      <button id="newFileBtn" class="mainAction">
+        <span>＋</span>
+        <b>ملف جديد</b>
+      </button>
+
+      <button id="standaloneBtn" class="mainAction secondary">
+        <span>▱</span>
+        <b>سبورة مستقلة</b>
+      </button>
+    </div>
+
+    <div class="searchBox">
+      <span>⌕</span>
+      <input id="searchInput" type="search" placeholder="ابحث عن ملف...">
+    </div>
+
+    <div class="sectionTitle">
+      <h2>ملفاتك</h2>
+      <span id="fileCount">0</span>
+    </div>
+
+    <div id="filesList" class="filesList"></div>
+
+    <div id="emptyState" class="emptyState">
+      <div class="emptyIcon">▱</div>
+      <h3>مفيش ملفات لسه</h3>
+      <p>اعمل ملف جديد وابدأ الكتابة على السبورة.</p>
+    </div>
+  </section>
+
+
+  <!-- =========================
+       BOARD
+  ========================== -->
+  <section id="boardScreen" class="screen boardScreen hidden">
+
+    <div id="boardTopbar" class="floatingBar topbar">
+
+      <button id="backBtn" class="toolBtn" title="رجوع">‹</button>
+
+      <div class="boardTitleWrap">
+        <input id="boardTitle" maxlength="60" value="السبورة">
+        <span id="saveState">تم الحفظ</span>
+      </div>
+
+      <button id="undoBtn" class="toolBtn" title="تراجع">↶</button>
+      <button id="redoBtn" class="toolBtn" title="إعادة">↷</button>
+      <button id="moreBtn" class="toolBtn" title="المزيد">⋮</button>
+
+    </div>
+
+
+    <!-- RULER -->
+    <div id="ruler" class="ruler hidden">
+      <div class="rulerNumbers">
+        <span>0</span>
+        <span>1</span>
+        <span>2</span>
+        <span>3</span>
+        <span>4</span>
+        <span>5</span>
+        <span>6</span>
+        <span>7</span>
+        <span>8</span>
+        <span>9</span>
+        <span>10</span>
+        <span>11</span>
+        <span>12</span>
+        <span>13</span>
+        <span>14</span>
+        <span>15</span>
+      </div>
+    </div>
+
+
+    <!-- BOARD -->
+    <main id="board" class="board background-white">
+
+      <canvas id="drawCanvas"></canvas>
+
+      <div id="objectLayer"></div>
+
+      <div id="lockOverlay" class="lockOverlay hidden">
+        🔒
+      </div>
+
+    </main>
+
+
+    <!-- QUICK TOOLS -->
+    <div id="quickTools" class="floatingBar quickTools">
+
+      <button id="penBtn" class="quickBtn active" title="القلم">
+        ✎
+      </button>
+
+      <button id="eraserBtn" class="quickBtn" title="الممحاة">
+        ◇
+      </button>
+
+      <button id="highlighterBtn" class="quickBtn" title="هايلايتر">
+        ▰
+      </button>
+
+      <button id="colorBtn" class="quickBtn colorQuick" title="اللون">
+        <span id="colorDot"></span>
+      </button>
+
+      <button id="sizeBtn" class="quickBtn" title="حجم القلم">
+        ●
+      </button>
+
+      <button id="shapeBtn" class="quickBtn" title="الأشكال">
+        □
+      </button>
+
+      <button id="textBtn" class="quickBtn" title="نص">
+        T
+      </button>
+
+      <button id="moreToolsBtn" class="quickBtn" title="أدوات">
+        ⋮
+      </button>
+
+    </div>
+
+
+    <!-- COLOR POPUP -->
+    <div id="colorPopup" class="popup colorPopup hidden">
+
+      <div class="popupTitle">الألوان</div>
+
+      <div class="colorsGrid">
+        <button class="colorChoice" data-color="#111111" style="background:#111111"></button>
+        <button class="colorChoice" data-color="#ffffff" style="background:#ffffff"></button>
+        <button class="colorChoice" data-color="#ef4444" style="background:#ef4444"></button>
+        <button class="colorChoice" data-color="#f97316" style="background:#f97316"></button>
+        <button class="colorChoice" data-color="#eab308" style="background:#eab308"></button>
+        <button class="colorChoice" data-color="#22c55e" style="background:#22c55e"></button>
+        <button class="colorChoice" data-color="#06b6d4" style="background:#06b6d4"></button>
+        <button class="colorChoice" data-color="#3b82f6" style="background:#3b82f6"></button>
+        <button class="colorChoice" data-color="#6366f1" style="background:#6366f1"></button>
+        <button class="colorChoice" data-color="#a855f7" style="background:#a855f7"></button>
+        <button class="colorChoice" data-color="#ec4899" style="background:#ec4899"></button>
+        <button class="colorChoice" data-color="#92400e" style="background:#92400e"></button>
+      </div>
+
+    </div>
+
+
+    <!-- SIZE POPUP -->
+    <div id="sizePopup" class="popup hidden">
+
+      <div class="popupTitle">حجم القلم</div>
+
+      <div class="sizeOptions">
+        <button data-size="2"><span style="height:2px"></span>2</button>
+        <button data-size="4"><span style="height:4px"></span>4</button>
+        <button data-size="7"><span style="height:7px"></span>7</button>
+        <button data-size="12"><span style="height:12px"></span>12</button>
+        <button data-size="20"><span style="height:20px"></span>20</button>
+        <button data-size="30"><span style="height:30px"></span>30</button>
+      </div>
+
+    </div>
+
+
+    <!-- SHAPES POPUP -->
+    <div id="shapePopup" class="popup shapePopup hidden">
+
+      <div class="popupTitle">الأشكال</div>
+
+      <div class="shapeGrid">
+        <button data-shape="line">╱<small>خط</small></button>
+        <button data-shape="arrow">➜<small>سهم</small></button>
+        <button data-shape="rect">□<small>مستطيل</small></button>
+        <button data-shape="circle">○<small>دائرة</small></button>
+        <button data-shape="triangle">△<small>مثلث</small></button>
+      </div>
+
+    </div>
+
+
+    <!-- MORE POPUP -->
+    <div id="morePopup" class="popup morePopup hidden">
+
+      <div class="popupTitle">الأدوات</div>
+
+      <button class="menuItem" id="backgroundBtn">
+        <span>▧</span>
+        الخلفية
+      </button>
+
+      <button class="menuItem" id="gridBtn">
+        <span>▦</span>
+        خطوط / شبكة
+      </button>
+
+      <button class="menuItem" id="rulerBtn">
+        <span>📏</span>
+        المسطرة
+      </button>
+
+      <button class="menuItem" id="imageBtn">
+        <span>▧</span>
+        إضافة صورة
+      </button>
+
+      <button class="menuItem" id="calculatorBtn">
+        <span>⌗</span>
+        آلة حاسبة
+      </button>
+
+      <button class="menuItem" id="timerBtn">
+        <span>◷</span>
+        المؤقت
+      </button>
+
+      <button class="menuItem" id="favoriteBtn">
+        <span>☆</span>
+        <span id="favoriteText">إضافة للمفضلة</span>
+      </button>
+
+      <button class="menuItem" id="exportBtn">
+        <span>⇩</span>
+        تصدير صورة
+      </button>
+
+      <button class="menuItem" id="printBtn">
+        <span>▣</span>
+        طباعة / PDF
+      </button>
+
+      <button class="menuItem" id="clearBtn">
+        <span>⌫</span>
+        مسح الصفحة
+      </button>
+
+      <button class="menuItem" id="themeBtn">
+        <span>☾</span>
+        الوضع الليلي
+      </button>
+
+      <button class="menuItem" id="lockBtn">
+        <span>🔒</span>
+        <span id="lockText">قفل السبورة</span>
+      </button>
+
+      <button class="menuItem danger" id="deleteBoardBtn">
+        <span>🗑</span>
+        حذف الملف
+      </button>
+
+    </div>
+
+
+    <!-- BACKGROUND POPUP -->
+    <div id="backgroundPopup" class="popup backgroundPopup hidden">
+
+      <div class="popupTitle">خلفية السبورة</div>
+
+      <div class="backgroundChoices">
+
+        <button data-bg="white">
+          <span class="preview bgWhite"></span>
+          أبيض
+        </button>
+
+        <button data-bg="black">
+          <span class="preview bgBlack"></span>
+          أسود
+        </button>
+
+        <button data-bg="lines">
+          <span class="preview bgLines"></span>
+          مسطر
+        </button>
+
+        <button data-bg="grid">
+          <span class="preview bgGrid"></span>
+          شبكة
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <!-- CALCULATOR -->
+    <div id="calculator" class="floatingPanel hidden">
+
+      <div class="panelHeader">
+        <b>الآلة الحاسبة</b>
+        <button class="closePanel" data-close="calculator">×</button>
+      </div>
+
+      <input id="calcDisplay" readonly>
+
+      <div class="calcGrid">
+
+        <button data-calc="7">7</button>
+        <button data-calc="8">8</button>
+        <button data-calc="9">9</button>
+        <button data-calc="/">÷</button>
+
+        <button data-calc="4">4</button>
+        <button data-calc="5">5</button>
+        <button data-calc="6">6</button>
+        <button data-calc="*">×</button>
+
+        <button data-calc="1">1</button>
+        <button data-calc="2">2</button>
+        <button data-calc="3">3</button>
+        <button data-calc="-">−</button>
+
+        <button data-calc="0">0</button>
+        <button data-calc=".">.</button>
+        <button data-calc="C">C</button>
+        <button data-calc="+">+</button>
+
+        <button data-calc="(">(</button>
+        <button data-calc=")">)</button>
+        <button data-calc="back">⌫</button>
+        <button class="equals" data-calc="=">=</button>
+
+      </div>
+
+    </div>
+
+
+    <!-- TIMER -->
+    <div id="timerPanel" class="floatingPanel hidden">
+
+      <div class="panelHeader">
+        <b>المؤقت</b>
+        <button class="closePanel" data-close="timer">×</button>
+      </div>
+
+      <div id="timerDisplay">05:00</div>
+
+      <div class="timerInputs">
+        <input id="timerMinutes" type="number" min="0" max="99" value="5">
+        <span>دقيقة</span>
+      </div>
+
+      <div class="timerButtons">
+        <button id="timerStart">ابدأ</button>
+        <button id="timerPause">إيقاف</button>
+        <button id="timerReset">إعادة</button>
+      </div>
+
+      <div class="pomodoroRow">
+        <button data-pomo="25">25 دقيقة</button>
+        <button data-pomo="5">5 دقائق</button>
+      </div>
+
+    </div>
+
+
+    <!-- IMAGE INPUT -->
+    <input id="imageInput" type="file" accept="image/*" hidden>
+
+
+    <!-- PAGE NAVIGATION -->
+    <div class="pageNavigation floatingBar">
+
+      <button id="prevPageBtn" class="pageBtn">‹</button>
+
+      <div id="pageInfo">1 / 1</div>
+
+      <button id="nextPageBtn" class="pageBtn">+</button>
+
+    </div>
+
+
+    <!-- TOAST -->
+    <div id="toast" class="toast"></div>
+
+  </section>
+
+  <script src="script.js"></script>
+</body>
+  </html>
