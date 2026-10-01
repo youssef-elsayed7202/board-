@@ -1,1283 +1,1285 @@
-"use strict";
+(() => {
+  "use strict";
 
-/* =========================================================
-   GENERAL WHITEBOARD APP
-   Three-file version:
-   index.html
-   style.css
-   script.js
-========================================================= */
+  const STORAGE_KEY = "whiteboard_files_v4";
+  const SETTINGS_KEY = "whiteboard_settings_v4";
 
+  const $ = (selector, parent = document) =>
+    parent.querySelector(selector);
 
-/* =========================================================
-   ELEMENTS
-========================================================= */
+  const $$ = (selector, parent = document) =>
+    [...parent.querySelectorAll(selector)];
 
-const $ = (id) => document.getElementById(id);
+  const uid = () =>
+    `${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 9)}`;
 
-const homeScreen = $("homeScreen");
-const boardScreen = $("boardScreen");
+  const clamp = (value, min, max) =>
+    Math.min(Math.max(value, min), max);
 
-const board = $("board");
-const canvas = $("drawCanvas");
-const ctx = canvas.getContext("2d");
-
-const objectLayer = $("objectLayer");
-
-const filesList = $("filesList");
-const emptyState = $("emptyState");
-const fileCount = $("fileCount");
-const searchInput = $("searchInput");
-
-const boardTitle = $("boardTitle");
-const saveState = $("saveState");
-
-const colorDot = $("colorDot");
-
-const colorPopup = $("colorPopup");
-const sizePopup = $("sizePopup");
-const shapePopup = $("shapePopup");
-const morePopup = $("morePopup");
-const backgroundPopup = $("backgroundPopup");
-
-const calculator = $("calculator");
-const timerPanel = $("timerPanel");
-
-const toast = $("toast");
-
-const imageInput = $("imageInput");
-
-const ruler = $("ruler");
-const lockOverlay = $("lockOverlay");
-
-
-/* =========================================================
-   STORAGE
-========================================================= */
-
-const STORAGE_KEY = "general_whiteboard_database_v4";
-const SETTINGS_KEY = "general_whiteboard_settings_v4";
-
-
-let database = {
-  files: []
-};
-
-let settings = {
-  theme: "light"
-};
-
-
-function loadDatabase() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved) {
-      database = JSON.parse(saved);
-
-      if (!database.files || !Array.isArray(database.files)) {
-        database.files = [];
-      }
+  function readJSON(key, fallback) {
+    try {
+      return JSON.parse(
+        localStorage.getItem(key) || ""
+      );
+    } catch {
+      return fallback;
     }
-  } catch (error) {
-    console.error(error);
+  }
 
-    database = {
-      files: []
+  const state = {
+    files: readJSON(STORAGE_KEY, []),
+    settings: readJSON(SETTINGS_KEY, {}),
+
+    screen: "home",
+
+    currentFileId: null,
+    pageIndex: 0,
+
+    tool: "pen",
+    color: "#163B7A",
+    size: 4,
+
+    locked: false,
+
+    drawing: false,
+    currentStroke: null,
+    shapeStart: null,
+    lastPointer: null,
+
+    history: [],
+    future: [],
+
+    gridOn: false,
+
+    timerSeconds: 300,
+    timerRunning: false,
+    timerInterval: null
+  };
+
+  if (!Array.isArray(state.files)) {
+    state.files = [];
+  }
+
+  state.darkMode =
+    Boolean(state.settings.darkMode);
+
+  const els = {
+    home: $("#homeScreen"),
+    boardScreen: $("#boardScreen"),
+
+    newFile: $("#newFileBtn"),
+    standalone: $("#standaloneBtn"),
+    homeTheme: $("#themeHomeBtn"),
+
+    search: $("#searchInput"),
+    fileCount: $("#fileCount"),
+    filesList: $("#filesList"),
+    emptyState: $("#emptyState"),
+
+    back: $("#backBtn"),
+    title: $("#boardTitle"),
+    saveState: $("#saveState"),
+
+    undo: $("#undoBtn"),
+    redo: $("#redoBtn"),
+    more: $("#moreBtn"),
+
+    ruler: $("#ruler"),
+    board: $("#board"),
+    canvas: $("#drawCanvas"),
+    objectLayer: $("#objectLayer"),
+    lockOverlay: $("#lockOverlay"),
+
+    pen: $("#penBtn"),
+    eraser: $("#eraserBtn"),
+    highlighter: $("#highlighterBtn"),
+    color: $("#colorBtn"),
+    colorDot: $("#colorDot"),
+    size: $("#sizeBtn"),
+    shapes: $("#shapeBtn"),
+    text: $("#textBtn"),
+    moreTools: $("#moreToolsBtn"),
+
+    colorPopup: $("#colorPopup"),
+    sizePopup: $("#sizePopup"),
+    shapePopup: $("#shapePopup"),
+    morePopup: $("#morePopup"),
+    backgroundPopup: $("#backgroundPopup"),
+
+    backgroundBtn: $("#backgroundBtn"),
+    gridBtn: $("#gridBtn"),
+    rulerBtn: $("#rulerBtn"),
+    imageBtn: $("#imageBtn"),
+    calculatorBtn: $("#calculatorBtn"),
+    timerBtn: $("#timerBtn"),
+    favoriteBtn: $("#favoriteBtn"),
+    favoriteText: $("#favoriteText"),
+    exportBtn: $("#exportBtn"),
+    printBtn: $("#printBtn"),
+    clearBtn: $("#clearBtn"),
+    themeBtn: $("#themeBtn"),
+    lockBtn: $("#lockBtn"),
+    lockText: $("#lockText"),
+    deleteBoardBtn: $("#deleteBoardBtn"),
+
+    calculator: $("#calculator"),
+    calcDisplay: $("#calcDisplay"),
+
+    timerPanel: $("#timerPanel"),
+    timerDisplay: $("#timerDisplay"),
+    timerMinutes: $("#timerMinutes"),
+    timerStart: $("#timerStart"),
+    timerPause: $("#timerPause"),
+    timerReset: $("#timerReset"),
+
+    imageInput: $("#imageInput"),
+
+    prevPage: $("#prevPageBtn"),
+    nextPage: $("#nextPageBtn"),
+    pageInfo: $("#pageInfo"),
+
+    toast: $("#toast")
+  };
+
+  const ctx =
+    els.canvas?.getContext("2d");
+
+  let toastTimer = null;
+  let drag = null;
+
+  function saveData() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(state.files)
+      );
+
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify(state.settings)
+      );
+    } catch {
+      showToast(
+        "مساحة الحفظ في المتصفح امتلأت"
+      );
+    }
+  }
+
+  function currentFile() {
+    return state.files.find(
+      (file) =>
+        file.id === state.currentFileId
+    ) || null;
+  }
+
+  function emptyPage() {
+    return {
+      id: uid(),
+      background: "white",
+      strokes: [],
+      objects: []
     };
   }
-}
 
+  function createFile(
+    name,
+    standalone = false
+  ) {
+    return {
+      id: uid(),
+      name:
+        name ||
+        "سبورة جديدة",
 
-function saveDatabase() {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(database)
+      standalone,
+
+      favorite: false,
+
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+
+      pages: [emptyPage()]
+    };
+  }
+
+  function currentPage() {
+    const file =
+      currentFile();
+
+    if (!file) {
+      return null;
+    }
+
+    if (
+      !Array.isArray(file.pages) ||
+      !file.pages.length
+    ) {
+      file.pages = [emptyPage()];
+    }
+
+    state.pageIndex = clamp(
+      state.pageIndex,
+      0,
+      file.pages.length - 1
     );
-  } catch (error) {
-    console.error(error);
-    showToast("مساحة التخزين في المتصفح ممتلئة");
-  }
-}
 
-
-function loadSettings() {
-  try {
-    const saved = localStorage.getItem(SETTINGS_KEY);
-
-    if (saved) {
-      settings = {
-        ...settings,
-        ...JSON.parse(saved)
-      };
-    }
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-
-function saveSettings() {
-  localStorage.setItem(
-    SETTINGS_KEY,
-    JSON.stringify(settings)
-  );
-}
-
-
-/* =========================================================
-   APP STATE
-========================================================= */
-
-let currentFileId = null;
-let currentPageIndex = 0;
-
-let currentTool = "pen";
-let currentColor = "#111111";
-let currentSize = 4;
-let currentShape = "line";
-
-let locked = false;
-
-let isDrawing = false;
-let currentStroke = null;
-
-let history = [];
-let redoHistory = [];
-
-let timerInterval = null;
-let timerSeconds = 300;
-
-let selectedObjectId = null;
-let draggedObject = null;
-
-
-/* =========================================================
-   DEFAULT PAGE
-========================================================= */
-
-function createPage() {
-  return {
-    background: "white",
-    strokes: [],
-    texts: [],
-    images: []
-  };
-}
-
-
-/* =========================================================
-   FILE HELPERS
-========================================================= */
-
-function createFile(name, standalone = false) {
-
-  const now = Date.now();
-
-  const file = {
-    id: "file_" + now + "_" + Math.random().toString(36).slice(2),
-    name: name || "ملف جديد",
-    type: standalone ? "standalone" : "file",
-    favorite: false,
-    locked: false,
-    createdAt: now,
-    updatedAt: now,
-    pages: [createPage()]
-  };
-
-  database.files.unshift(file);
-
-  saveDatabase();
-
-  return file;
-}
-
-
-function getCurrentFile() {
-  return database.files.find(
-    file => file.id === currentFileId
-  );
-}
-
-
-function updateCurrentFile() {
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    return;
+    return file.pages[
+      state.pageIndex
+    ];
   }
 
-  file.updatedAt = Date.now();
+  function showToast(message) {
+    if (!els.toast) return;
 
-  saveDatabase();
+    els.toast.textContent = message;
 
-  saveState.textContent = "تم الحفظ";
+    els.toast.classList.add(
+      "show"
+    );
 
-  setTimeout(() => {
+    clearTimeout(toastTimer);
 
-    if (getCurrentFile()) {
-      saveState.textContent = "محفوظ";
-    }
-
-  }, 700);
-}
-
-
-/* =========================================================
-   HOME
-========================================================= */
-
-function renderFiles(filter = "") {
-
-  filesList.innerHTML = "";
-
-  const query = filter.trim().toLowerCase();
-
-  const files = database.files.filter(file => {
-
-    return file.name
-      .toLowerCase()
-      .includes(query);
-
-  });
-
-  fileCount.textContent = files.length;
-
-  if (files.length === 0) {
-
-    emptyState.classList.remove("hidden");
-
-    if (query) {
-      emptyState.querySelector("h3").textContent =
-        "مش لاقي الملف";
-      emptyState.querySelector("p").textContent =
-        "جرب اسم مختلف.";
-    } else {
-      emptyState.querySelector("h3").textContent =
-        "مفيش ملفات لسه";
-      emptyState.querySelector("p").textContent =
-        "اعمل ملف جديد وابدأ الكتابة على السبورة.";
-    }
-
-    return;
-  }
-
-  emptyState.classList.add("hidden");
-
-  files.forEach(file => {
-
-    const card = document.createElement("div");
-    card.className = "fileCard";
-
-    const top = document.createElement("div");
-    top.className = "fileCardTop";
-
-    const icon = document.createElement("div");
-    icon.className = "fileIcon";
-    icon.textContent = file.type === "standalone" ? "▱" : "▤";
-
-    const favorite = document.createElement("button");
-    favorite.className = "fileFavorite";
-    favorite.textContent = file.favorite ? "★" : "☆";
-
-    favorite.addEventListener("click", (event) => {
-
-      event.stopPropagation();
-
-      file.favorite = !file.favorite;
-
-      saveDatabase();
-      renderFiles(searchInput.value);
-
-    });
-
-    top.appendChild(icon);
-    top.appendChild(favorite);
-
-    const info = document.createElement("div");
-
-    const name = document.createElement("div");
-    name.className = "fileName";
-    name.textContent = file.name;
-
-    const meta = document.createElement("div");
-    meta.className = "fileMeta";
-
-    const typeText =
-      file.type === "standalone"
-        ? "سبورة مستقلة"
-        : "ملف";
-
-    meta.textContent =
-      `${typeText} • ${file.pages.length} صفحة`;
-
-    info.appendChild(name);
-    info.appendChild(meta);
-
-    const actions = document.createElement("div");
-    actions.className = "fileActions";
-
-    const open = document.createElement("button");
-    open.textContent = "فتح";
-
-    open.addEventListener("click", () => {
-      openFile(file.id);
-    });
-
-    const rename = document.createElement("button");
-    rename.textContent = "تعديل الاسم";
-
-    rename.addEventListener("click", () => {
-
-      const newName = prompt(
-        "اكتب الاسم الجديد:",
-        file.name
+    toastTimer = setTimeout(() => {
+      els.toast.classList.remove(
+        "show"
       );
+    }, 1600);
+  }
 
-      if (
-        newName !== null &&
-        newName.trim()
-      ) {
+  /* =========================
+     SHOW / HIDE
+  ========================== */
 
-        file.name = newName.trim();
+  function reveal(element) {
+    if (!element) return;
 
-        saveDatabase();
-        renderFiles(searchInput.value);
+    element.classList.remove(
+      "hidden"
+    );
 
-      }
+    element.hidden = false;
 
-    });
+    element.style.removeProperty(
+      "display"
+    );
+  }
 
-    const remove = document.createElement("button");
-    remove.className = "danger";
-    remove.textContent = "حذف";
+  function hide(element) {
+    if (!element) return;
 
-    remove.addEventListener("click", () => {
+    element.classList.add(
+      "hidden"
+    );
 
-      const ok = confirm(
-        `هل تريد حذف "${file.name}"؟`
-      );
+    element.hidden = true;
 
-      if (!ok) {
-        return;
-      }
+    element.style.display =
+      "none";
+  }
 
-      database.files =
-        database.files.filter(
-          item => item.id !== file.id
+  function closePopups() {
+    [
+      els.colorPopup,
+      els.sizePopup,
+      els.shapePopup,
+      els.morePopup,
+      els.backgroundPopup
+    ].forEach(hide);
+  }
+
+  function closePanels() {
+    hide(els.calculator);
+    hide(els.timerPanel);
+  }
+
+  function openPopup(popup) {
+    closePopups();
+    reveal(popup);
+  }
+
+  /* =========================
+     THEME
+  ========================== */
+
+  function applyTheme() {
+    document.body.classList.toggle(
+      "dark",
+      state.darkMode
+    );
+
+    document.documentElement.dataset.theme =
+      state.darkMode
+        ? "dark"
+        : "light";
+  }
+
+  function toggleTheme() {
+    state.darkMode =
+      !state.darkMode;
+
+    state.settings.darkMode =
+      state.darkMode;
+
+    applyTheme();
+    saveData();
+
+    showToast(
+      state.darkMode
+        ? "الوضع الداكن"
+        : "الوضع الفاتح"
+    );
+  }
+
+  /* =========================
+     UI
+  ========================== */
+
+  function updateColorUI() {
+    if (els.colorDot) {
+      els.colorDot.style.background =
+        state.color;
+    }
+
+    $$(".colorChoice").forEach(
+      (button) => {
+        button.classList.toggle(
+          "active",
+          button.dataset.color ===
+            state.color
         );
-
-      saveDatabase();
-      renderFiles(searchInput.value);
-
-    });
-
-    actions.appendChild(open);
-    actions.appendChild(rename);
-    actions.appendChild(remove);
-
-    card.appendChild(top);
-    card.appendChild(info);
-    card.appendChild(actions);
-
-    filesList.appendChild(card);
-
-  });
-}
-
-
-/* =========================================================
-   OPEN / CREATE
-========================================================= */
-
-function openFile(id) {
-
-  const file = database.files.find(
-    item => item.id === id
-  );
-
-  if (!file) {
-    return;
+      }
+    );
   }
 
-  currentFileId = id;
-  currentPageIndex = 0;
+  function updateToolUI() {
+    const buttons = {
+      pen: els.pen,
+      eraser: els.eraser,
+      highlighter:
+        els.highlighter
+    };
 
-  locked = !!file.locked;
-
-  homeScreen.classList.add("hidden");
-  boardScreen.classList.remove("hidden");
-
-  boardTitle.value = file.name;
-
-  history = [];
-  redoHistory = [];
-
-  updateLockUI();
-
-  resizeCanvas();
-
-  renderCurrentPage();
-
-  closeAllPopups();
-
-}
-
-
-function createNewFile() {
-
-  const name = prompt(
-    "اسم الملف:",
-    "ملف جديد"
-  );
-
-  if (name === null) {
-    return;
+    Object.entries(buttons).forEach(
+      ([tool, button]) => {
+        button?.classList.toggle(
+          "active",
+          state.tool === tool
+        );
+      }
+    );
   }
 
-  const cleanName =
-    name.trim() || "ملف جديد";
+  function updateLockUI() {
+    if (state.locked) {
+      reveal(els.lockOverlay);
+    } else {
+      hide(els.lockOverlay);
+    }
 
-  const file = createFile(
-    cleanName,
-    false
-  );
-
-  openFile(file.id);
-}
-
-
-function createStandalone() {
-
-  const file = createFile(
-    "سبورة مستقلة",
-    true
-  );
-
-  openFile(file.id);
-}
-
-
-/* =========================================================
-   BACK
-========================================================= */
-
-function goHome() {
-
-  saveCurrentState();
-
-  currentFileId = null;
-
-  boardScreen.classList.add("hidden");
-  homeScreen.classList.remove("hidden");
-
-  closeAllPopups();
-
-  renderFiles(searchInput.value);
-}
-
-
-/* =========================================================
-   BOARD TITLE
-========================================================= */
-
-boardTitle.addEventListener("change", () => {
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    return;
+    if (els.lockText) {
+      els.lockText.textContent =
+        state.locked
+          ? "فتح السبورة"
+          : "قفل السبورة";
+    }
   }
 
-  const name =
-    boardTitle.value.trim();
+  function updateFavoriteUI() {
+    const file =
+      currentFile();
 
-  file.name =
-    name || "السبورة";
+    if (!file) return;
 
-  boardTitle.value = file.name;
+    if (els.favoriteText) {
+      els.favoriteText.textContent =
+        file.favorite
+          ? "إزالة من المفضلة"
+          : "إضافة للمفضلة";
+    }
 
-  updateCurrentFile();
+    const icon =
+      els.favoriteBtn?.querySelector(
+        ":scope > span:first-child"
+      );
 
-});
-
-
-/* =========================================================
-   CANVAS
-========================================================= */
-
-function resizeCanvas() {
-
-  const rect =
-    board.getBoundingClientRect();
-
-  const dpr =
-    window.devicePixelRatio || 1;
-
-  canvas.width =
-    Math.max(1, Math.round(rect.width * dpr));
-
-  canvas.height =
-    Math.max(1, Math.round(rect.height * dpr));
-
-  canvas.style.width =
-    rect.width + "px";
-
-  canvas.style.height =
-    rect.height + "px";
-
-  ctx.setTransform(
-    dpr,
-    0,
-    0,
-    dpr,
-    0,
-    0
-  );
-
-  renderCurrentPage();
-}
-
-
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
-
-
-/* =========================================================
-   COORDINATES
-========================================================= */
-
-function getPoint(event) {
-
-  const rect =
-    canvas.getBoundingClientRect();
-
-  return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top
-  };
-
-}
-
-
-/* =========================================================
-   PAGE RENDERING
-========================================================= */
-
-function applyBackground(background) {
-
-  board.classList.remove(
-    "background-white",
-    "background-black",
-    "background-lines",
-    "background-grid"
-  );
-
-  board.classList.add(
-    "background-" + background
-  );
-
-}
-
-
-function renderCurrentPage() {
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    return;
+    if (icon) {
+      icon.textContent =
+        file.favorite
+          ? "★"
+          : "☆";
+    }
   }
 
-  if (!file.pages[currentPageIndex]) {
-    file.pages[currentPageIndex] =
-      createPage();
+  function updateBoardTitle() {
+    const file =
+      currentFile();
+
+    if (!file) return;
+
+    if (els.title) {
+      els.title.value =
+        file.name;
+    }
+
+    if (els.saveState) {
+      els.saveState.textContent =
+        "تم الحفظ";
+    }
+
+    updateFavoriteUI();
   }
 
-  const page =
-    file.pages[currentPageIndex];
+  /* =========================
+     HOME
+  ========================== */
 
-  applyBackground(page.background);
+  function showHome() {
+    state.screen =
+      "home";
 
-  const rect =
-    board.getBoundingClientRect();
+    reveal(els.home);
+    hide(els.boardScreen);
 
-  ctx.clearRect(
-    0,
-    0,
-    rect.width,
-    rect.height
-  );
+    state.currentFileId =
+      null;
 
-  drawAllStrokes(page.strokes);
+    state.pageIndex = 0;
 
-  renderObjects(page);
+    state.history = [];
+    state.future = [];
 
-  updatePageInfo();
+    state.locked = false;
 
-}
+    closePopups();
+    closePanels();
 
+    renderFiles(
+      els.search?.value || ""
+    );
+  }
 
-function drawAllStrokes(strokes) {
+  function openBoard(file) {
+    if (!file) return;
 
-  strokes.forEach(stroke => {
+    state.screen =
+      "board";
 
-    drawStroke(
-      stroke,
-      false
+    state.currentFileId =
+      file.id;
+
+    state.pageIndex = 0;
+
+    state.history = [];
+    state.future = [];
+
+    state.locked = false;
+
+    hide(els.home);
+    reveal(els.boardScreen);
+
+    closePopups();
+    closePanels();
+
+    applyTheme();
+
+    updateBoardTitle();
+    updateToolUI();
+    updateColorUI();
+    updateLockUI();
+
+    renderPage();
+  }
+
+  function createNewFile() {
+    const name = prompt(
+      "اكتب اسم الملف",
+      `سبورة ${state.files.length + 1}`
     );
 
-  });
-
-}
-
-
-function drawStroke(stroke, preview = false) {
-
-  if (!stroke) {
-    return;
-  }
-
-  ctx.save();
-
-  if (stroke.tool === "eraser") {
-
-    ctx.globalCompositeOperation =
-      "destination-out";
-
-    ctx.globalAlpha = 1;
-
-  } else if (stroke.tool === "highlighter") {
-
-    ctx.globalCompositeOperation =
-      "source-over";
-
-    ctx.globalAlpha =
-      stroke.opacity || 0.28;
-
-  } else {
-
-    ctx.globalCompositeOperation =
-      "source-over";
-
-    ctx.globalAlpha =
-      stroke.opacity || 1;
-
-  }
-
-  ctx.strokeStyle =
-    stroke.color || "#111111";
-
-  ctx.fillStyle =
-    stroke.color || "#111111";
-
-  ctx.lineWidth =
-    stroke.size || 4;
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  if (stroke.type === "freehand") {
-
-    const points = stroke.points || [];
-
-    if (points.length === 0) {
-      ctx.restore();
+    if (name === null) {
       return;
     }
 
-    if (points.length === 1) {
+    const trimmed =
+      name.trim();
 
-      ctx.beginPath();
-
-      ctx.arc(
-        points[0].x,
-        points[0].y,
-        Math.max(
-          1,
-          (stroke.size || 4) / 2
-        ),
-        0,
-        Math.PI * 2
+    if (!trimmed) {
+      showToast(
+        "اكتب اسمًا للملف"
       );
-
-      ctx.fill();
-
-    } else {
-
-      ctx.beginPath();
-
-      ctx.moveTo(
-        points[0].x,
-        points[0].y
-      );
-
-      for (
-        let i = 1;
-        i < points.length;
-        i++
-      ) {
-
-        ctx.lineTo(
-          points[i].x,
-          points[i].y
-        );
-
-      }
-
-      ctx.stroke();
-
+      return;
     }
 
-  }
+    const file =
+      createFile(
+        trimmed,
+        false
+      );
 
-  if (stroke.type === "shape") {
-
-    drawShape(
-      stroke.shape,
-      stroke.start,
-      stroke.end
+    state.files.unshift(
+      file
     );
 
+    saveData();
+
+    openBoard(file);
+
+    showToast(
+      "تم إنشاء الملف"
+    );
   }
 
-  ctx.restore();
-
-}
-
-
-function drawShape(
-  shape,
-  start,
-  end
-) {
-
-  if (!start || !end) {
-    return;
-  }
-
-  const x1 = start.x;
-  const y1 = start.y;
-  const x2 = end.x;
-  const y2 = end.y;
-
-  const width = x2 - x1;
-  const height = y2 - y1;
-
-  ctx.beginPath();
-
-  if (shape === "line") {
-
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-
-    ctx.stroke();
-
-  }
-
-  else if (shape === "arrow") {
-
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-
-    const angle =
-      Math.atan2(
-        y2 - y1,
-        x2 - x1
+  function createStandalone() {
+    const file =
+      createFile(
+        "سبورة مستقلة",
+        true
       );
 
-    const head =
+    state.files.unshift(
+      file
+    );
+
+    saveData();
+
+    openBoard(file);
+
+    showToast(
+      "تم فتح السبورة المستقلة"
+    );
+  }
+
+  function renderFiles(
+    query = ""
+  ) {
+    const q =
+      query
+        .trim()
+        .toLowerCase();
+
+    if (els.fileCount) {
+      els.fileCount.textContent =
+        String(
+          state.files.length
+        );
+    }
+
+    if (!els.filesList) {
+      return;
+    }
+
+    const list =
+      state.files
+        .filter((file) =>
+          !q ||
+          file.name
+            .toLowerCase()
+            .includes(q)
+        )
+        .sort(
+          (a, b) =>
+            Number(b.favorite) -
+              Number(a.favorite) ||
+            b.updatedAt -
+              a.updatedAt
+        );
+
+    els.filesList.innerHTML =
+      "";
+
+    if (els.emptyState) {
+      els.emptyState.style.display =
+        list.length
+          ? "none"
+          : "";
+    }
+
+    list.forEach(
+      (file) => {
+        const card =
+          document.createElement(
+            "article"
+          );
+
+        card.className =
+          "fileCard";
+
+        card.innerHTML = `
+          <div class="fileCardTop">
+            <div class="fileIcon">▱</div>
+
+            <button
+              class="fileFavorite"
+              type="button"
+            >
+              ${file.favorite ? "★" : "☆"}
+            </button>
+          </div>
+
+          <div class="fileName"></div>
+
+          <div class="fileMeta">
+            ${file.pages.length} صفحة
+          </div>
+
+          <div class="fileActions">
+
+            <button
+              type="button"
+              data-open
+            >
+              فتح
+            </button>
+
+            <button
+              type="button"
+              data-rename
+            >
+              تسمية
+            </button>
+
+            <button
+              type="button"
+              data-delete
+              class="danger"
+            >
+              حذف
+            </button>
+
+          </div>
+        `;
+
+        $(".fileName", card)
+          .textContent =
+          file.name;
+
+        $("[data-open]", card)
+          .addEventListener(
+            "click",
+            () =>
+              openBoard(file)
+          );
+
+        $("[data-rename]", card)
+          .addEventListener(
+            "click",
+            () =>
+              renameFile(file)
+          );
+
+        $("[data-delete]", card)
+          .addEventListener(
+            "click",
+            () =>
+              deleteFile(file.id)
+          );
+
+        $(".fileFavorite", card)
+          .addEventListener(
+            "click",
+            () =>
+              toggleFavorite(
+                file.id
+              )
+          );
+
+        els.filesList.appendChild(
+          card
+        );
+      }
+    );
+  }
+
+  function renameFile(file) {
+    const name = prompt(
+      "اكتب الاسم الجديد",
+      file.name
+    );
+
+    if (name === null) {
+      return;
+    }
+
+    const trimmed =
+      name.trim();
+
+    if (!trimmed) {
+      showToast(
+        "الاسم لا يمكن أن يكون فارغًا"
+      );
+
+      return;
+    }
+
+    file.name =
+      trimmed;
+
+    file.updatedAt =
+      Date.now();
+
+    saveData();
+
+    if (
+      currentFile()?.id ===
+      file.id
+    ) {
+      updateBoardTitle();
+    }
+
+    renderFiles(
+      els.search?.value ||
+        ""
+    );
+
+    showToast(
+      "تم تغيير الاسم"
+    );
+  }
+
+  function deleteFile(fileId) {
+    const file =
+      state.files.find(
+        (item) =>
+          item.id ===
+          fileId
+      );
+
+    if (!file) return;
+
+    const ok =
+      confirm(
+        `هل تريد حذف "${file.name}"؟`
+      );
+
+    if (!ok) {
+      return;
+    }
+
+    state.files =
+      state.files.filter(
+        (item) =>
+          item.id !==
+          fileId
+      );
+
+    saveData();
+
+    if (
+      state.currentFileId ===
+      fileId
+    ) {
+      showHome();
+    } else {
+      renderFiles(
+        els.search?.value ||
+          ""
+      );
+    }
+
+    showToast(
+      "تم حذف الملف"
+    );
+  }
+
+  function toggleFavorite(fileId) {
+    const file =
+      state.files.find(
+        (item) =>
+          item.id ===
+          fileId
+      );
+
+    if (!file) return;
+
+    file.favorite =
+      !file.favorite;
+
+    file.updatedAt =
+      Date.now();
+
+    saveData();
+
+    renderFiles(
+      els.search?.value ||
+        ""
+    );
+
+    if (
+      currentFile()?.id ===
+      fileId
+    ) {
+      updateFavoriteUI();
+    }
+
+    showToast(
+      file.favorite
+        ? "تمت الإضافة للمفضلة"
+        : "تمت الإزالة من المفضلة"
+    );
+  }
+
+  /* =========================
+     HISTORY
+  ========================== */
+
+  function snapshot() {
+    const file =
+      currentFile();
+
+    if (!file) {
+      return null;
+    }
+
+    return JSON.parse(
+      JSON.stringify(
+        file.pages
+      )
+    );
+  }
+
+  function pushHistory() {
+    const snap =
+      snapshot();
+
+    if (!snap) {
+      return;
+    }
+
+    state.history.push(
+      snap
+    );
+
+    if (
+      state.history.length >
+      50
+    ) {
+      state.history.shift();
+    }
+
+    state.future = [];
+  }
+
+  function restorePages(
+    pages
+  ) {
+    const file =
+      currentFile();
+
+    if (!file) return;
+
+    file.pages =
+      JSON.parse(
+        JSON.stringify(
+          pages
+        )
+      );
+
+    file.updatedAt =
+      Date.now();
+
+    state.pageIndex =
+      clamp(
+        state.pageIndex,
+        0,
+        file.pages.length - 1
+      );
+
+    saveData();
+
+    renderPage();
+  }
+
+  function undo() {
+    if (!state.history.length) {
+      showToast(
+        "مفيش حاجة للتراجع"
+      );
+
+      return;
+    }
+
+    const now =
+      snapshot();
+
+    if (now) {
+      state.future.push(
+        now
+      );
+    }
+
+    const previous =
+      state.history.pop();
+
+    restorePages(
+      previous
+    );
+
+    showToast(
+      "تم التراجع"
+    );
+  }
+
+  function redo() {
+    if (!state.future.length) {
+      showToast(
+        "مفيش حاجة للإعادة"
+      );
+
+      return;
+    }
+
+    const now =
+      snapshot();
+
+    if (now) {
+      state.history.push(
+        now
+      );
+    }
+
+    const next =
+      state.future.pop();
+
+    restorePages(
+      next
+    );
+
+    showToast(
+      "تمت الإعادة"
+    );
+  }
+
+  /* =========================
+     CANVAS
+  ========================== */
+
+  function resizeCanvas() {
+    if (
+      !els.canvas ||
+      !ctx
+    ) {
+      return;
+    }
+
+    const rect =
+      els.canvas.getBoundingClientRect();
+
+    const width =
       Math.max(
-        10,
-        (ctx.lineWidth || 4) * 3
+        1,
+        Math.round(
+          rect.width *
+            devicePixelRatio
+        )
       );
+
+    const height =
+      Math.max(
+        1,
+        Math.round(
+          rect.height *
+            devicePixelRatio
+        )
+      );
+
+    if (
+      els.canvas.width !==
+        width ||
+      els.canvas.height !==
+        height
+    ) {
+      els.canvas.width =
+        width;
+
+      els.canvas.height =
+        height;
+    }
+
+    ctx.setTransform(
+      devicePixelRatio,
+      0,
+      0,
+      devicePixelRatio,
+      0,
+      0
+    );
+
+    ctx.lineCap =
+      "round";
+
+    ctx.lineJoin =
+      "round";
+  }
+
+  function pointFromEvent(
+    event
+  ) {
+    const rect =
+      els.canvas.getBoundingClientRect();
+
+    return {
+      x:
+        event.clientX -
+        rect.left,
+
+      y:
+        event.clientY -
+        rect.top
+    };
+  }
+
+  function clearCanvas() {
+    const rect =
+      els.canvas.getBoundingClientRect();
+
+    ctx.clearRect(
+      0,
+      0,
+      rect.width,
+      rect.height
+    );
+  }
+
+  function drawStroke(
+    stroke
+  ) {
+    if (
+      !stroke?.points?.length
+    ) {
+      return;
+    }
+
+    ctx.save();
+
+    ctx.globalCompositeOperation =
+      stroke.tool ===
+      "eraser"
+        ? "destination-out"
+        : "source-over";
+
+    ctx.strokeStyle =
+      stroke.color ||
+      "#163B7A";
+
+    ctx.lineWidth =
+      Number(
+        stroke.size
+      ) || 4;
+
+    ctx.globalAlpha =
+      stroke.tool ===
+      "highlighter"
+        ? 0.28
+        : 1;
+
+    if (
+      stroke.tool ===
+      "highlighter"
+    ) {
+      ctx.lineWidth *= 4;
+    }
 
     ctx.beginPath();
 
     ctx.moveTo(
-      x2,
-      y2
+      stroke.points[0].x,
+      stroke.points[0].y
     );
 
-    ctx.lineTo(
-      x2 - head * Math.cos(angle - Math.PI / 6),
-      y2 - head * Math.sin(angle - Math.PI / 6)
-    );
-
-    ctx.moveTo(
-      x2,
-      y2
-    );
-
-    ctx.lineTo(
-      x2 - head * Math.cos(angle + Math.PI / 6),
-      y2 - head * Math.sin(angle + Math.PI / 6)
-    );
+    for (
+      let i = 1;
+      i < stroke.points.length;
+      i++
+    ) {
+      ctx.lineTo(
+        stroke.points[i].x,
+        stroke.points[i].y
+      );
+    }
 
     ctx.stroke();
 
+    ctx.restore();
   }
 
-  else if (shape === "rect") {
+  /* =========================
+     SHAPES
+  ========================== */
 
-    ctx.strokeRect(
-      x1,
-      y1,
-      width,
-      height
-    );
+  function makeShape(
+    shape,
+    start,
+    end
+  ) {
+    return {
+      id: uid(),
 
+      type: "shape",
+
+      shape,
+
+      x:
+        Math.min(
+          start.x,
+          end.x
+        ),
+
+      y:
+        Math.min(
+          start.y,
+          end.y
+        ),
+
+      width:
+        end.x -
+        start.x,
+
+      height:
+        end.y -
+        start.y,
+
+      color:
+        state.color,
+
+      size:
+        state.size
+    };
   }
 
-  else if (shape === "circle") {
+  function drawShape(
+    shape
+  ) {
+    const x =
+      shape.x;
 
-    const cx =
-      (x1 + x2) / 2;
+    const y =
+      shape.y;
 
-    const cy =
-      (y1 + y2) / 2;
+    const w =
+      shape.width;
 
-    const rx =
-      Math.abs(width) / 2;
-
-    const ry =
-      Math.abs(height) / 2;
+    const h =
+      shape.height;
 
     ctx.save();
 
-    ctx.translate(cx, cy);
-
-    ctx.scale(
-      Math.max(rx, 1),
-      Math.max(ry, 1)
-    );
-
-    ctx.arc(
-      0,
-      0,
-      1,
-      0,
-      Math.PI * 2
-    );
-
-    ctx.restore();
-
-    ctx.stroke();
-
-  }
-
-  else if (shape === "triangle") {
-
-    const topX =
-      (x1 + x2) / 2;
-
-    const topY =
-      Math.min(y1, y2);
-
-    const bottomY =
-      Math.max(y1, y2);
-
-    ctx.moveTo(
-      topX,
-      topY
-    );
-
-    ctx.lineTo(
-      x1,
-      bottomY
-    );
-
-    ctx.lineTo(
-      x2,
-      bottomY
-    );
-
-    ctx.closePath();
-
-    ctx.stroke();
-
-  }
-
-}
-
-
-/* =========================================================
-   POINTER DRAWING
-========================================================= */
-
-canvas.addEventListener(
-  "pointerdown",
-  startDrawing
-);
-
-canvas.addEventListener(
-  "pointermove",
-  drawMove
-);
-
-canvas.addEventListener(
-  "pointerup",
-  stopDrawing
-);
-
-canvas.addEventListener(
-  "pointercancel",
-  stopDrawing
-);
-
-
-function startDrawing(event) {
-
-  if (locked) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const point =
-    getPoint(event);
-
-  if (currentTool === "text") {
-
-    addTextAt(
-      point.x,
-      point.y
-    );
-
-    return;
-  }
-
-  isDrawing = true;
-
-  canvas.setPointerCapture(
-    event.pointerId
-  );
-
-  if (
-    currentTool === "pen" ||
-    currentTool === "highlighter" ||
-    currentTool === "eraser"
-  ) {
-
-    currentStroke = {
-      id: makeId(),
-      type: "freehand",
-      tool: currentTool,
-      color: currentColor,
-      size:
-        currentTool === "highlighter"
-          ? Math.max(currentSize * 3, 10)
-          : currentSize,
-      opacity:
-        currentTool === "highlighter"
-          ? 0.28
-          : 1,
-      points: [point]
-    };
-
-  }
-
-  else if (currentTool === "shape") {
-
-    currentStroke = {
-      id: makeId(),
-      type: "shape",
-      tool: "pen",
-      shape: currentShape,
-      color: currentColor,
-      size: currentSize,
-      opacity: 1,
-      start: point,
-      end: point
-    };
-
-  }
-
-}
-
-
-function drawMove(event) {
-
-  if (!isDrawing || !currentStroke) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const point =
-    getPoint(event);
-
-  if (currentStroke.type === "freehand") {
-
-    currentStroke.points.push(point);
-
-  } else {
-
-    currentStroke.end = point;
-
-  }
-
-  redrawForPreview();
-
-}
-
-
-function stopDrawing(event) {
-
-  if (!isDrawing || !currentStroke) {
-    return;
-  }
-
-  isDrawing = false;
-
-  try {
-    canvas.releasePointerCapture(
-      event.pointerId
-    );
-  } catch (error) {}
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    currentStroke = null;
-    return;
-  }
-
-  const page =
-    file.pages[currentPageIndex];
-
-  page.strokes.push(
-    currentStroke
-  );
-
-  pushHistory();
-
-  currentStroke = null;
-
-  updateCurrentFile();
-
-  renderCurrentPage();
-
-}
-
-
-function redrawForPreview() {
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    return;
-  }
-
-  const page =
-    file.pages[currentPageIndex];
-
-  const rect =
-    board.getBoundingClientRect();
-
-  ctx.clearRect(
-    0,
-    0,
-    rect.width,
-    rect.height
-  );
-
-  drawAllStrokes(page.strokes);
-
-  if (currentStroke) {
-    drawStroke(
-      currentStroke,
-      true
-    );
-  }
-
-}
-
-
-/* =========================================================
-   HISTORY
-========================================================= */
-
-function clonePage(page) {
-
-  return JSON.parse(
-    JSON.stringify(page)
-  );
-
-}
-
-
-function pushHistory() {
-
-  const file = getCurrentFile();
-
-  if (!file) {
-    return;
-  }
-
-  history.push(
-    clonePage(
-      file.pages[currentPageIndex]
-    )
-  );
-
-  if (history.length > 60) {
-    history.shift();
-  }
-
-  redoHistory = [];
-
-}
-
-
-function undo() {
-
-  const file = getCurrentFile();
-
-  if (!file || history.length === 0) {
-    return;
-  }
-
-  const current =
-    clonePage(
-      file.pages[currentPageIndex]
-    );
-
-  redoHistory.push(current);
-
-  const previous =
-    history.pop();
-
-  file.pages[currentPageIndex] =
-    previous;
-
-  updateCurrentFile();
-
-  renderCurrentPage();
-
-}
-
-
-function redo() {
-
-  const file = getCurrentFile();
-
-  if (!file || redoHistory.length === 0) {
-    return;
-  }
-
-  history.push(
-    clonePage(
-      file.pages[currentPageIndex]
-    )
-  );
-
-  const next =
-    redoHistory.pop();
-
-  file.pages[currentPageIndex] =
-    next;
-
-  updateCurrentFile();
-
-  renderCurrentPage();
-
-}
-
-
-/* =========================================================
-   OBJECTS
-========================================================= */
-
-function renderObjects(page) {
-
-  objectLayer.innerHTML = "";
-
-  page.texts.forEach(
-    textObject => {
-
-      const el =
-        document.createElement("div");
-
-      el.className =
-        "boardText";
-
-      el.dataset.id =
-        textObject.id;
-
-      el.textContent =
-        textObject.text;
-
-      el.style.left =
-        textObject.x + "px";
-
-      el.style.top =
-        textObject.y + "px";
-
-      el.style.fontSize =
-        textObject.size + "px";
-
-      el.style.color =
-        textObject.color;
-
-      el.style.fontWeight =
-        textObject.bold
-          ? "700"
-          : "400";
+    ctx.strokeStyle =
+      shape.color ||
+      "#163B7A";
+
+    ctx.lineWidth =
+      Number(
+        shape.size
+      ) || 4;
+
+    ctx.lineCap =
+      "round";
+
+    ctx.lineJoin =
+      "round";
+
+    if (
+      shape.shape ===
+      "rect"
+    ) {
+      ctx.strokeRect(
+        x,
+        y,
+        w,
+        h
+      );
+    }
+
+    else if (
+      shape.shape ===
+      "circle"
+    ) {
+      ctx.beginPath();
+
+      ctx.ellipse(
+        x + w / 2,
+        y + h / 2,
+        Math.abs(w / 2),
+        Math.abs(h / 2),
+        0,
+        0,
+        Math.PI * 2
+      );
+
+      ctx.stroke();
+    }
+
+    else if (
+      shape.shape ===
+      "triangle"
+    ) {
+      ctx.beginPath();
+
+      ctx.moveTo(
+        x + w / 2,
+        y
+      );
+
+      ctx.lineTo(
+        x + w,
+        y + h
+      );
+
+      ctx.lineTo(
+        x,
+        y + h
+      );
+
+      ctx.closePath();
+
+      ctx.stroke();
+    }
+
+    else {
+      const endX =
+        x + w;
+
+      const endY =
+        y + h;
+
+      ctx.beginPath();
+
+      ctx.moveTo(
+        x,
+        y
+      );
+
+      ctx.lineTo(
+        endX,
+        endY
+      );
+
+      ctx.stroke();
 
       if (
-        selectedObjectId ===
-        textObject.id
+        shape.shape ===
+        "arrow"
       ) {
+        const angle =
+          Math.atan2(
+            endY - y,
+            endX - x
+          );
 
-        el.classList.add(
-          "selected"
+        const size = 14;
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          endX,
+          endY
         );
 
-      }
-
-      el.addEventListener(
-        "pointerdown",
-        startObjectDrag
-      );
-
-      el.addEventListener(
-        "dblclick",
-        () => editText(textObject)
-      );
-
-      objectLayer.appendChild(el);
-
-    }
-  );
-
-
-  page.images.forEach(
-    imageObject => {
-
-      const img =
-        document.createElement("img");
-
-      img.className =
-        "boardImage";
-
-      img.dataset.id =
-        imageObject.id;
-
-      img.src =
-        imageObject.src;
-
-      img.draggable = false;
-
-      img.style.left =
-        imageObject.x + "px";
-
-      img.style.top =
-        imageObject.y + "px";
-
-      img.style.width =
-  
+        ctx.lineTo(
+          endX -
+            size *
+              Math.cos(
+                angle -
+                  Math.PI /
