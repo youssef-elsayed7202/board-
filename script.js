@@ -1,180 +1,227 @@
-(() => {
+(function () {
   "use strict";
 
-  const STORAGE_KEY = "whiteboard_files_v4";
-  const SETTINGS_KEY = "whiteboard_settings_v4";
+  /* =========================
+     STORAGE
+  ========================== */
 
-  const $ = (selector, parent = document) =>
-    parent.querySelector(selector);
+  var STORAGE_KEY = "whiteboard_files_final";
+  var SETTINGS_KEY = "whiteboard_settings_final";
 
-  const $$ = (selector, parent = document) =>
-    [...parent.querySelectorAll(selector)];
-
-  const uid = () =>
-    `${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2, 9)}`;
-
-  const clamp = (value, min, max) =>
-    Math.min(Math.max(value, min), max);
-
-  function readJSON(key, fallback) {
+  function loadJSON(key, fallback) {
     try {
-      return JSON.parse(
-        localStorage.getItem(key) || ""
-      );
-    } catch {
+      var value = localStorage.getItem(key);
+
+      if (!value) {
+        return fallback;
+      }
+
+      return JSON.parse(value);
+    } catch (error) {
       return fallback;
     }
   }
 
-  const state = {
-    files: readJSON(STORAGE_KEY, []),
-    settings: readJSON(SETTINGS_KEY, {}),
+  var files = loadJSON(STORAGE_KEY, []);
+  var settings = loadJSON(SETTINGS_KEY, {
+    darkMode: false
+  });
 
-    screen: "home",
-
-    currentFileId: null,
-    pageIndex: 0,
-
-    tool: "pen",
-    color: "#163B7A",
-    size: 4,
-
-    locked: false,
-
-    drawing: false,
-    currentStroke: null,
-    shapeStart: null,
-    lastPointer: null,
-
-    history: [],
-    future: [],
-
-    gridOn: false,
-
-    timerSeconds: 300,
-    timerRunning: false,
-    timerInterval: null
-  };
-
-  if (!Array.isArray(state.files)) {
-    state.files = [];
+  if (!Array.isArray(files)) {
+    files = [];
   }
 
-  state.darkMode =
-    Boolean(state.settings.darkMode);
+  /* =========================
+     STATE
+  ========================== */
 
-  const els = {
-    home: $("#homeScreen"),
-    boardScreen: $("#boardScreen"),
+  var currentFileId = null;
+  var currentPageIndex = 0;
 
-    newFile: $("#newFileBtn"),
-    standalone: $("#standaloneBtn"),
-    homeTheme: $("#themeHomeBtn"),
+  var currentTool = "pen";
+  var currentColor = "#163B7A";
+  var currentSize = 4;
 
-    search: $("#searchInput"),
-    fileCount: $("#fileCount"),
-    filesList: $("#filesList"),
-    emptyState: $("#emptyState"),
+  var locked = false;
 
-    back: $("#backBtn"),
-    title: $("#boardTitle"),
-    saveState: $("#saveState"),
+  var drawing = false;
+  var currentStroke = null;
+  var shapeStart = null;
+  var selectedShape = null;
 
-    undo: $("#undoBtn"),
-    redo: $("#redoBtn"),
-    more: $("#moreBtn"),
+  var history = [];
+  var redoHistory = [];
 
-    ruler: $("#ruler"),
-    board: $("#board"),
-    canvas: $("#drawCanvas"),
-    objectLayer: $("#objectLayer"),
-    lockOverlay: $("#lockOverlay"),
+  var timerInterval = null;
+  var timerSeconds = 300;
 
-    pen: $("#penBtn"),
-    eraser: $("#eraserBtn"),
-    highlighter: $("#highlighterBtn"),
-    color: $("#colorBtn"),
-    colorDot: $("#colorDot"),
-    size: $("#sizeBtn"),
-    shapes: $("#shapeBtn"),
-    text: $("#textBtn"),
-    moreTools: $("#moreToolsBtn"),
+  /* =========================
+     ELEMENTS
+  ========================== */
 
-    colorPopup: $("#colorPopup"),
-    sizePopup: $("#sizePopup"),
-    shapePopup: $("#shapePopup"),
-    morePopup: $("#morePopup"),
-    backgroundPopup: $("#backgroundPopup"),
+  var homeScreen = document.getElementById("homeScreen");
+  var boardScreen = document.getElementById("boardScreen");
 
-    backgroundBtn: $("#backgroundBtn"),
-    gridBtn: $("#gridBtn"),
-    rulerBtn: $("#rulerBtn"),
-    imageBtn: $("#imageBtn"),
-    calculatorBtn: $("#calculatorBtn"),
-    timerBtn: $("#timerBtn"),
-    favoriteBtn: $("#favoriteBtn"),
-    favoriteText: $("#favoriteText"),
-    exportBtn: $("#exportBtn"),
-    printBtn: $("#printBtn"),
-    clearBtn: $("#clearBtn"),
-    themeBtn: $("#themeBtn"),
-    lockBtn: $("#lockBtn"),
-    lockText: $("#lockText"),
-    deleteBoardBtn: $("#deleteBoardBtn"),
+  var newFileBtn = document.getElementById("newFileBtn");
+  var standaloneBtn = document.getElementById("standaloneBtn");
+  var themeHomeBtn = document.getElementById("themeHomeBtn");
 
-    calculator: $("#calculator"),
-    calcDisplay: $("#calcDisplay"),
+  var searchInput = document.getElementById("searchInput");
+  var filesList = document.getElementById("filesList");
+  var fileCount = document.getElementById("fileCount");
+  var emptyState = document.getElementById("emptyState");
 
-    timerPanel: $("#timerPanel"),
-    timerDisplay: $("#timerDisplay"),
-    timerMinutes: $("#timerMinutes"),
-    timerStart: $("#timerStart"),
-    timerPause: $("#timerPause"),
-    timerReset: $("#timerReset"),
+  var backBtn = document.getElementById("backBtn");
+  var boardTitle = document.getElementById("boardTitle");
+  var saveState = document.getElementById("saveState");
 
-    imageInput: $("#imageInput"),
+  var undoBtn = document.getElementById("undoBtn");
+  var redoBtn = document.getElementById("redoBtn");
+  var moreBtn = document.getElementById("moreBtn");
 
-    prevPage: $("#prevPageBtn"),
-    nextPage: $("#nextPageBtn"),
-    pageInfo: $("#pageInfo"),
+  var board = document.getElementById("board");
+  var canvas = document.getElementById("drawCanvas");
+  var objectLayer = document.getElementById("objectLayer");
 
-    toast: $("#toast")
-  };
+  var lockOverlay = document.getElementById("lockOverlay");
+  var ruler = document.getElementById("ruler");
 
-  const ctx =
-    els.canvas?.getContext("2d");
+  var penBtn = document.getElementById("penBtn");
+  var eraserBtn = document.getElementById("eraserBtn");
+  var highlighterBtn = document.getElementById("highlighterBtn");
+  var colorBtn = document.getElementById("colorBtn");
+  var colorDot = document.getElementById("colorDot");
+  var sizeBtn = document.getElementById("sizeBtn");
+  var shapeBtn = document.getElementById("shapeBtn");
+  var textBtn = document.getElementById("textBtn");
+  var moreToolsBtn = document.getElementById("moreToolsBtn");
 
-  let toastTimer = null;
-  let drag = null;
+  var colorPopup = document.getElementById("colorPopup");
+  var sizePopup = document.getElementById("sizePopup");
+  var shapePopup = document.getElementById("shapePopup");
+  var morePopup = document.getElementById("morePopup");
+  var backgroundPopup = document.getElementById("backgroundPopup");
 
-  function saveData() {
+  var backgroundBtn = document.getElementById("backgroundBtn");
+  var gridBtn = document.getElementById("gridBtn");
+  var rulerBtn = document.getElementById("rulerBtn");
+  var imageBtn = document.getElementById("imageBtn");
+  var calculatorBtn = document.getElementById("calculatorBtn");
+  var timerBtn = document.getElementById("timerBtn");
+  var favoriteBtn = document.getElementById("favoriteBtn");
+  var favoriteText = document.getElementById("favoriteText");
+  var exportBtn = document.getElementById("exportBtn");
+  var printBtn = document.getElementById("printBtn");
+  var clearBtn = document.getElementById("clearBtn");
+  var themeBtn = document.getElementById("themeBtn");
+  var lockBtn = document.getElementById("lockBtn");
+  var lockText = document.getElementById("lockText");
+  var deleteBoardBtn = document.getElementById("deleteBoardBtn");
+
+  var calculator = document.getElementById("calculator");
+  var calcDisplay = document.getElementById("calcDisplay");
+
+  var timerPanel = document.getElementById("timerPanel");
+  var timerDisplay = document.getElementById("timerDisplay");
+  var timerMinutes = document.getElementById("timerMinutes");
+  var timerStart = document.getElementById("timerStart");
+  var timerPause = document.getElementById("timerPause");
+  var timerReset = document.getElementById("timerReset");
+
+  var imageInput = document.getElementById("imageInput");
+
+  var prevPageBtn = document.getElementById("prevPageBtn");
+  var nextPageBtn = document.getElementById("nextPageBtn");
+  var pageInfo = document.getElementById("pageInfo");
+
+  var toast = document.getElementById("toast");
+
+  var ctx = canvas.getContext("2d");
+
+  /* =========================
+     HELPERS
+  ========================== */
+
+  function uid() {
+    return String(Date.now()) +
+      "_" +
+      String(Math.random()).substring(2);
+  }
+
+  function saveAll() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify(state.files)
+        JSON.stringify(files)
       );
 
       localStorage.setItem(
         SETTINGS_KEY,
-        JSON.stringify(state.settings)
+        JSON.stringify(settings)
       );
-    } catch {
-      showToast(
-        "مساحة الحفظ في المتصفح امتلأت"
-      );
+
+      if (saveState) {
+        saveState.textContent = "تم الحفظ";
+      }
+    } catch (error) {
+      showToast("مساحة الحفظ ممتلئة");
     }
   }
 
-  function currentFile() {
-    return state.files.find(
-      (file) =>
-        file.id === state.currentFileId
-    ) || null;
+  function showToast(message) {
+    if (!toast) return;
+
+    toast.textContent = message;
+    toast.classList.add("show");
+
+    setTimeout(function () {
+      toast.classList.remove("show");
+    }, 1600);
   }
 
-  function emptyPage() {
+  function hide(element) {
+    if (!element) return;
+
+    element.classList.add("hidden");
+  }
+
+  function show(element) {
+    if (!element) return;
+
+    element.classList.remove("hidden");
+  }
+
+  function closePopups() {
+    hide(colorPopup);
+    hide(sizePopup);
+    hide(shapePopup);
+    hide(morePopup);
+    hide(backgroundPopup);
+  }
+
+  function closePanels() {
+    hide(calculator);
+    hide(timerPanel);
+  }
+
+  function openPopup(popup) {
+    closePopups();
+    show(popup);
+  }
+
+  function getCurrentFile() {
+    var i;
+
+    for (i = 0; i < files.length; i++) {
+      if (files[i].id === currentFileId) {
+        return files[i];
+      }
+    }
+
+    return null;
+  }
+
+  function createPage() {
     return {
       id: uid(),
       background: "white",
@@ -183,120 +230,37 @@
     };
   }
 
-  function createFile(
-    name,
-    standalone = false
-  ) {
+  function createFile(name, standalone) {
     return {
       id: uid(),
-      name:
-        name ||
-        "سبورة جديدة",
-
-      standalone,
-
+      name: name,
+      standalone: standalone,
       favorite: false,
-
       createdAt: Date.now(),
       updatedAt: Date.now(),
-
-      pages: [emptyPage()]
+      pages: [createPage()]
     };
   }
 
-  function currentPage() {
-    const file =
-      currentFile();
+  function getCurrentPage() {
+    var file = getCurrentFile();
 
-    if (!file) {
-      return null;
+    if (!file) return null;
+
+    if (!file.pages || !file.pages.length) {
+      file.pages = [createPage()];
     }
 
-    if (
-      !Array.isArray(file.pages) ||
-      !file.pages.length
-    ) {
-      file.pages = [emptyPage()];
+    if (currentPageIndex < 0) {
+      currentPageIndex = 0;
     }
 
-    state.pageIndex = clamp(
-      state.pageIndex,
-      0,
-      file.pages.length - 1
-    );
+    if (currentPageIndex >= file.pages.length) {
+      currentPageIndex =
+        file.pages.length - 1;
+    }
 
-    return file.pages[
-      state.pageIndex
-    ];
-  }
-
-  function showToast(message) {
-    if (!els.toast) return;
-
-    els.toast.textContent = message;
-
-    els.toast.classList.add(
-      "show"
-    );
-
-    clearTimeout(toastTimer);
-
-    toastTimer = setTimeout(() => {
-      els.toast.classList.remove(
-        "show"
-      );
-    }, 1600);
-  }
-
-  /* =========================
-     SHOW / HIDE
-  ========================== */
-
-  function reveal(element) {
-    if (!element) return;
-
-    element.classList.remove(
-      "hidden"
-    );
-
-    element.hidden = false;
-
-    element.style.removeProperty(
-      "display"
-    );
-  }
-
-  function hide(element) {
-    if (!element) return;
-
-    element.classList.add(
-      "hidden"
-    );
-
-    element.hidden = true;
-
-    element.style.display =
-      "none";
-  }
-
-  function closePopups() {
-    [
-      els.colorPopup,
-      els.sizePopup,
-      els.shapePopup,
-      els.morePopup,
-      els.backgroundPopup
-    ].forEach(hide);
-  }
-
-  function closePanels() {
-    hide(els.calculator);
-    hide(els.timerPanel);
-  }
-
-  function openPopup(popup) {
-    closePopups();
-    reveal(popup);
+    return file.pages[currentPageIndex];
   }
 
   /* =========================
@@ -304,131 +268,25 @@
   ========================== */
 
   function applyTheme() {
-    document.body.classList.toggle(
-      "dark",
-      state.darkMode
-    );
-
-    document.documentElement.dataset.theme =
-      state.darkMode
-        ? "dark"
-        : "light";
+    if (settings.darkMode) {
+      document.body.classList.add("dark");
+    } else {
+      document.body.classList.remove("dark");
+    }
   }
 
   function toggleTheme() {
-    state.darkMode =
-      !state.darkMode;
-
-    state.settings.darkMode =
-      state.darkMode;
+    settings.darkMode =
+      !settings.darkMode;
 
     applyTheme();
-    saveData();
+    saveAll();
 
-    showToast(
-      state.darkMode
-        ? "الوضع الداكن"
-        : "الوضع الفاتح"
-    );
-  }
-
-  /* =========================
-     UI
-  ========================== */
-
-  function updateColorUI() {
-    if (els.colorDot) {
-      els.colorDot.style.background =
-        state.color;
-    }
-
-    $$(".colorChoice").forEach(
-      (button) => {
-        button.classList.toggle(
-          "active",
-          button.dataset.color ===
-            state.color
-        );
-      }
-    );
-  }
-
-  function updateToolUI() {
-    const buttons = {
-      pen: els.pen,
-      eraser: els.eraser,
-      highlighter:
-        els.highlighter
-    };
-
-    Object.entries(buttons).forEach(
-      ([tool, button]) => {
-        button?.classList.toggle(
-          "active",
-          state.tool === tool
-        );
-      }
-    );
-  }
-
-  function updateLockUI() {
-    if (state.locked) {
-      reveal(els.lockOverlay);
+    if (settings.darkMode) {
+      showToast("الوضع الليلي");
     } else {
-      hide(els.lockOverlay);
+      showToast("الوضع النهاري");
     }
-
-    if (els.lockText) {
-      els.lockText.textContent =
-        state.locked
-          ? "فتح السبورة"
-          : "قفل السبورة";
-    }
-  }
-
-  function updateFavoriteUI() {
-    const file =
-      currentFile();
-
-    if (!file) return;
-
-    if (els.favoriteText) {
-      els.favoriteText.textContent =
-        file.favorite
-          ? "إزالة من المفضلة"
-          : "إضافة للمفضلة";
-    }
-
-    const icon =
-      els.favoriteBtn?.querySelector(
-        ":scope > span:first-child"
-      );
-
-    if (icon) {
-      icon.textContent =
-        file.favorite
-          ? "★"
-          : "☆";
-    }
-  }
-
-  function updateBoardTitle() {
-    const file =
-      currentFile();
-
-    if (!file) return;
-
-    if (els.title) {
-      els.title.value =
-        file.name;
-    }
-
-    if (els.saveState) {
-      els.saveState.textContent =
-        "تم الحفظ";
-    }
-
-    updateFavoriteUI();
   }
 
   /* =========================
@@ -436,264 +294,250 @@
   ========================== */
 
   function showHome() {
-    state.screen =
-      "home";
+    show(homeScreen);
+    hide(boardScreen);
 
-    reveal(els.home);
-    hide(els.boardScreen);
-
-    state.currentFileId =
-      null;
-
-    state.pageIndex = 0;
-
-    state.history = [];
-    state.future = [];
-
-    state.locked = false;
+    currentFileId = null;
+    currentPageIndex = 0;
 
     closePopups();
     closePanels();
 
-    renderFiles(
-      els.search?.value || ""
-    );
+    renderFiles();
   }
 
   function openBoard(file) {
     if (!file) return;
 
-    state.screen =
-      "board";
+    currentFileId = file.id;
+    currentPageIndex = 0;
 
-    state.currentFileId =
-      file.id;
+    history = [];
+    redoHistory = [];
 
-    state.pageIndex = 0;
+    locked = false;
 
-    state.history = [];
-    state.future = [];
-
-    state.locked = false;
-
-    hide(els.home);
-    reveal(els.boardScreen);
+    hide(homeScreen);
+    show(boardScreen);
 
     closePopups();
     closePanels();
 
-    applyTheme();
+    boardTitle.value = file.name;
 
-    updateBoardTitle();
+    updateFavoriteUI();
+    updateLockUI();
     updateToolUI();
     updateColorUI();
-    updateLockUI();
 
     renderPage();
   }
 
   function createNewFile() {
-    const name = prompt(
+    var name = prompt(
       "اكتب اسم الملف",
-      `سبورة ${state.files.length + 1}`
+      "ملف جديد"
     );
 
     if (name === null) {
       return;
     }
 
-    const trimmed =
-      name.trim();
+    name = name.trim();
 
-    if (!trimmed) {
-      showToast(
-        "اكتب اسمًا للملف"
-      );
+    if (!name) {
+      showToast("اكتب اسم الملف");
       return;
     }
 
-    const file =
-      createFile(
-        trimmed,
-        false
-      );
-
-    state.files.unshift(
-      file
+    var file = createFile(
+      name,
+      false
     );
 
-    saveData();
+    files.unshift(file);
+
+    saveAll();
 
     openBoard(file);
-
-    showToast(
-      "تم إنشاء الملف"
-    );
   }
 
   function createStandalone() {
-    const file =
-      createFile(
-        "سبورة مستقلة",
-        true
-      );
-
-    state.files.unshift(
-      file
+    var file = createFile(
+      "سبورة مستقلة",
+      true
     );
 
-    saveData();
+    files.unshift(file);
+
+    saveAll();
 
     openBoard(file);
-
-    showToast(
-      "تم فتح السبورة المستقلة"
-    );
   }
 
-  function renderFiles(
-    query = ""
-  ) {
-    const q =
-      query
+  /* =========================
+     FILES
+  ========================== */
+
+  function renderFiles() {
+    var query =
+      searchInput.value
         .trim()
         .toLowerCase();
 
-    if (els.fileCount) {
-      els.fileCount.textContent =
-        String(
-          state.files.length
-        );
-    }
+    filesList.innerHTML = "";
 
-    if (!els.filesList) {
-      return;
-    }
+    fileCount.textContent =
+      String(files.length);
 
-    const list =
-      state.files
-        .filter((file) =>
-          !q ||
-          file.name
-            .toLowerCase()
-            .includes(q)
-        )
-        .sort(
-          (a, b) =>
-            Number(b.favorite) -
-              Number(a.favorite) ||
-            b.updatedAt -
-              a.updatedAt
-        );
+    var visibleFiles = [];
 
-    els.filesList.innerHTML =
-      "";
+    var i;
 
-    if (els.emptyState) {
-      els.emptyState.style.display =
-        list.length
-          ? "none"
-          : "";
-    }
-
-    list.forEach(
-      (file) => {
-        const card =
-          document.createElement(
-            "article"
-          );
-
-        card.className =
-          "fileCard";
-
-        card.innerHTML = `
-          <div class="fileCardTop">
-            <div class="fileIcon">▱</div>
-
-            <button
-              class="fileFavorite"
-              type="button"
-            >
-              ${file.favorite ? "★" : "☆"}
-            </button>
-          </div>
-
-          <div class="fileName"></div>
-
-          <div class="fileMeta">
-            ${file.pages.length} صفحة
-          </div>
-
-          <div class="fileActions">
-
-            <button
-              type="button"
-              data-open
-            >
-              فتح
-            </button>
-
-            <button
-              type="button"
-              data-rename
-            >
-              تسمية
-            </button>
-
-            <button
-              type="button"
-              data-delete
-              class="danger"
-            >
-              حذف
-            </button>
-
-          </div>
-        `;
-
-        $(".fileName", card)
-          .textContent =
-          file.name;
-
-        $("[data-open]", card)
-          .addEventListener(
-            "click",
-            () =>
-              openBoard(file)
-          );
-
-        $("[data-rename]", card)
-          .addEventListener(
-            "click",
-            () =>
-              renameFile(file)
-          );
-
-        $("[data-delete]", card)
-          .addEventListener(
-            "click",
-            () =>
-              deleteFile(file.id)
-          );
-
-        $(".fileFavorite", card)
-          .addEventListener(
-            "click",
-            () =>
-              toggleFavorite(
-                file.id
-              )
-          );
-
-        els.filesList.appendChild(
-          card
-        );
+    for (i = 0; i < files.length; i++) {
+      if (
+        !query ||
+        files[i].name
+          .toLowerCase()
+          .indexOf(query) !== -1
+      ) {
+        visibleFiles.push(files[i]);
       }
-    );
+    }
+
+    if (visibleFiles.length === 0) {
+      emptyState.style.display = "";
+    } else {
+      emptyState.style.display = "none";
+    }
+
+    for (
+      i = 0;
+      i < visibleFiles.length;
+      i++
+    ) {
+      createFileCard(
+        visibleFiles[i]
+      );
+    }
+  }
+
+  function createFileCard(file) {
+    var card =
+      document.createElement("article");
+
+    card.className = "fileCard";
+
+    var top =
+      document.createElement("div");
+
+    top.className =
+      "fileCardTop";
+
+    var icon =
+      document.createElement("div");
+
+    icon.className =
+      "fileIcon";
+
+    icon.textContent = "▱";
+
+    var favorite =
+      document.createElement("button");
+
+    favorite.className =
+      "fileFavorite";
+
+    favorite.textContent =
+      file.favorite ? "★" : "☆";
+
+    favorite.onclick =
+      function (event) {
+        event.stopPropagation();
+
+        file.favorite =
+          !file.favorite;
+
+        file.updatedAt =
+          Date.now();
+
+        saveAll();
+        renderFiles();
+      };
+
+    top.appendChild(icon);
+    top.appendChild(favorite);
+
+    var name =
+      document.createElement("div");
+
+    name.className =
+      "fileName";
+
+    name.textContent =
+      file.name;
+
+    var meta =
+      document.createElement("div");
+
+    meta.className =
+      "fileMeta";
+
+    meta.textContent =
+      file.pages.length +
+      " صفحة";
+
+    var actions =
+      document.createElement("div");
+
+    actions.className =
+      "fileActions";
+
+    var open =
+      document.createElement("button");
+
+    open.textContent = "فتح";
+
+    open.onclick =
+      function () {
+        openBoard(file);
+      };
+
+    var rename =
+      document.createElement("button");
+
+    rename.textContent = "تسمية";
+
+    rename.onclick =
+      function () {
+        renameFile(file);
+      };
+
+    var del =
+      document.createElement("button");
+
+    del.textContent = "حذف";
+    del.className = "danger";
+
+    del.onclick =
+      function () {
+        deleteFile(file.id);
+      };
+
+    actions.appendChild(open);
+    actions.appendChild(rename);
+    actions.appendChild(del);
+
+    card.appendChild(top);
+    card.appendChild(name);
+    card.appendChild(meta);
+    card.appendChild(actions);
+
+    filesList.appendChild(card);
   }
 
   function renameFile(file) {
-    const name = prompt(
+    var name = prompt(
       "اكتب الاسم الجديد",
       file.name
     );
@@ -702,584 +546,28 @@
       return;
     }
 
-    const trimmed =
-      name.trim();
+    name = name.trim();
 
-    if (!trimmed) {
-      showToast(
-        "الاسم لا يمكن أن يكون فارغًا"
-      );
-
+    if (!name) {
       return;
     }
 
-    file.name =
-      trimmed;
+    file.name = name;
+    file.updatedAt = Date.now();
 
-    file.updatedAt =
-      Date.now();
-
-    saveData();
+    saveAll();
+    renderFiles();
 
     if (
-      currentFile()?.id ===
-      file.id
+      currentFileId === file.id
     ) {
-      updateBoardTitle();
+      boardTitle.value =
+        file.name;
     }
-
-    renderFiles(
-      els.search?.value ||
-        ""
-    );
-
-    showToast(
-      "تم تغيير الاسم"
-    );
   }
 
-  function deleteFile(fileId) {
-    const file =
-      state.files.find(
-        (item) =>
-          item.id ===
-          fileId
-      );
-
-    if (!file) return;
-
-    const ok =
-      confirm(
-        `هل تريد حذف "${file.name}"؟`
-      );
-
-    if (!ok) {
-      return;
-    }
-
-    state.files =
-      state.files.filter(
-        (item) =>
-          item.id !==
-          fileId
-      );
-
-    saveData();
-
-    if (
-      state.currentFileId ===
-      fileId
-    ) {
-      showHome();
-    } else {
-      renderFiles(
-        els.search?.value ||
-          ""
-      );
-    }
-
-    showToast(
-      "تم حذف الملف"
-    );
-  }
-
-  function toggleFavorite(fileId) {
-    const file =
-      state.files.find(
-        (item) =>
-          item.id ===
-          fileId
-      );
-
-    if (!file) return;
-
-    file.favorite =
-      !file.favorite;
-
-    file.updatedAt =
-      Date.now();
-
-    saveData();
-
-    renderFiles(
-      els.search?.value ||
-        ""
-    );
-
-    if (
-      currentFile()?.id ===
-      fileId
-    ) {
-      updateFavoriteUI();
-    }
-
-    showToast(
-      file.favorite
-        ? "تمت الإضافة للمفضلة"
-        : "تمت الإزالة من المفضلة"
-    );
-  }
-
-  /* =========================
-     HISTORY
-  ========================== */
-
-  function snapshot() {
-    const file =
-      currentFile();
-
-    if (!file) {
-      return null;
-    }
-
-    return JSON.parse(
-      JSON.stringify(
-        file.pages
-      )
-    );
-  }
-
-  function pushHistory() {
-    const snap =
-      snapshot();
-
-    if (!snap) {
-      return;
-    }
-
-    state.history.push(
-      snap
-    );
-
-    if (
-      state.history.length >
-      50
-    ) {
-      state.history.shift();
-    }
-
-    state.future = [];
-  }
-
-  function restorePages(
-    pages
-  ) {
-    const file =
-      currentFile();
-
-    if (!file) return;
-
-    file.pages =
-      JSON.parse(
-        JSON.stringify(
-          pages
-        )
-      );
-
-    file.updatedAt =
-      Date.now();
-
-    state.pageIndex =
-      clamp(
-        state.pageIndex,
-        0,
-        file.pages.length - 1
-      );
-
-    saveData();
-
-    renderPage();
-  }
-
-  function undo() {
-    if (!state.history.length) {
-      showToast(
-        "مفيش حاجة للتراجع"
-      );
-
-      return;
-    }
-
-    const now =
-      snapshot();
-
-    if (now) {
-      state.future.push(
-        now
-      );
-    }
-
-    const previous =
-      state.history.pop();
-
-    restorePages(
-      previous
-    );
-
-    showToast(
-      "تم التراجع"
-    );
-  }
-
-  function redo() {
-    if (!state.future.length) {
-      showToast(
-        "مفيش حاجة للإعادة"
-      );
-
-      return;
-    }
-
-    const now =
-      snapshot();
-
-    if (now) {
-      state.history.push(
-        now
-      );
-    }
-
-    const next =
-      state.future.pop();
-
-    restorePages(
-      next
-    );
-
-    showToast(
-      "تمت الإعادة"
-    );
-  }
-
-  /* =========================
-     CANVAS
-  ========================== */
-
-  function resizeCanvas() {
-    if (
-      !els.canvas ||
-      !ctx
-    ) {
-      return;
-    }
-
-    const rect =
-      els.canvas.getBoundingClientRect();
-
-    const width =
-      Math.max(
-        1,
-        Math.round(
-          rect.width *
-            devicePixelRatio
-        )
-      );
-
-    const height =
-      Math.max(
-        1,
-        Math.round(
-          rect.height *
-            devicePixelRatio
-        )
-      );
-
-    if (
-      els.canvas.width !==
-        width ||
-      els.canvas.height !==
-        height
-    ) {
-      els.canvas.width =
-        width;
-
-      els.canvas.height =
-        height;
-    }
-
-    ctx.setTransform(
-      devicePixelRatio,
-      0,
-      0,
-      devicePixelRatio,
-      0,
-      0
-    );
-
-    ctx.lineCap =
-      "round";
-
-    ctx.lineJoin =
-      "round";
-  }
-
-  function pointFromEvent(
-    event
-  ) {
-    const rect =
-      els.canvas.getBoundingClientRect();
-
-    return {
-      x:
-        event.clientX -
-        rect.left,
-
-      y:
-        event.clientY -
-        rect.top
-    };
-  }
-
-  function clearCanvas() {
-    const rect =
-      els.canvas.getBoundingClientRect();
-
-    ctx.clearRect(
-      0,
-      0,
-      rect.width,
-      rect.height
-    );
-  }
-
-  function drawStroke(
-    stroke
-  ) {
-    if (
-      !stroke?.points?.length
-    ) {
-      return;
-    }
-
-    ctx.save();
-
-    ctx.globalCompositeOperation =
-      stroke.tool ===
-      "eraser"
-        ? "destination-out"
-        : "source-over";
-
-    ctx.strokeStyle =
-      stroke.color ||
-      "#163B7A";
-
-    ctx.lineWidth =
-      Number(
-        stroke.size
-      ) || 4;
-
-    ctx.globalAlpha =
-      stroke.tool ===
-      "highlighter"
-        ? 0.28
-        : 1;
-
-    if (
-      stroke.tool ===
-      "highlighter"
-    ) {
-      ctx.lineWidth *= 4;
-    }
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-      stroke.points[0].x,
-      stroke.points[0].y
-    );
-
-    for (
-      let i = 1;
-      i < stroke.points.length;
-      i++
-    ) {
-      ctx.lineTo(
-        stroke.points[i].x,
-        stroke.points[i].y
-      );
-    }
-
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  /* =========================
-     SHAPES
-  ========================== */
-
-  function makeShape(
-    shape,
-    start,
-    end
-  ) {
-    return {
-      id: uid(),
-
-      type: "shape",
-
-      shape,
-
-      x:
-        Math.min(
-          start.x,
-          end.x
-        ),
-
-      y:
-        Math.min(
-          start.y,
-          end.y
-        ),
-
-      width:
-        end.x -
-        start.x,
-
-      height:
-        end.y -
-        start.y,
-
-      color:
-        state.color,
-
-      size:
-        state.size
-    };
-  }
-
-  function drawShape(
-    shape
-  ) {
-    const x =
-      shape.x;
-
-    const y =
-      shape.y;
-
-    const w =
-      shape.width;
-
-    const h =
-      shape.height;
-
-    ctx.save();
-
-    ctx.strokeStyle =
-      shape.color ||
-      "#163B7A";
-
-    ctx.lineWidth =
-      Number(
-        shape.size
-      ) || 4;
-
-    ctx.lineCap =
-      "round";
-
-    ctx.lineJoin =
-      "round";
-
-    if (
-      shape.shape ===
-      "rect"
-    ) {
-      ctx.strokeRect(
-        x,
-        y,
-        w,
-        h
-      );
-    }
-
-    else if (
-      shape.shape ===
-      "circle"
-    ) {
-      ctx.beginPath();
-
-      ctx.ellipse(
-        x + w / 2,
-        y + h / 2,
-        Math.abs(w / 2),
-        Math.abs(h / 2),
-        0,
-        0,
-        Math.PI * 2
-      );
-
-      ctx.stroke();
-    }
-
-    else if (
-      shape.shape ===
-      "triangle"
-    ) {
-      ctx.beginPath();
-
-      ctx.moveTo(
-        x + w / 2,
-        y
-      );
-
-      ctx.lineTo(
-        x + w,
-        y + h
-      );
-
-      ctx.lineTo(
-        x,
-        y + h
-      );
-
-      ctx.closePath();
-
-      ctx.stroke();
-    }
-
-    else {
-      const endX =
-        x + w;
-
-      const endY =
-        y + h;
-
-      ctx.beginPath();
-
-      ctx.moveTo(
-        x,
-        y
-      );
-
-      ctx.lineTo(
-        endX,
-        endY
-      );
-
-      ctx.stroke();
-
-      if (
-        shape.shape ===
-        "arrow"
-      ) {
-        const angle =
-          Math.atan2(
-            endY - y,
-            endX - x
-          );
-
-        const size = 14;
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          endX,
-          endY
-        );
-
-        ctx.lineTo(
-          endX -
-            size *
-              Math.cos(
-                angle -
-                  Math.PI /
+  function deleteFile(id) {
+    var file = null;
+    var i;
+
+    for (i = 
